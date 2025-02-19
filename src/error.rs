@@ -29,6 +29,8 @@ pub enum IpcError
     ChannelClosed,
     #[error("Task join error: {0}")]
     JoinError(#[from] JoinError),
+    #[error("Other: {0}")]
+    Other(String),
 }
 
 /// A specialized `Result` type for IPC operations.
