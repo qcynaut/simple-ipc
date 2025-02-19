@@ -20,6 +20,7 @@ use tokio::{
     sync::{
         broadcast,
         mpsc,
+        Mutex,
         RwLock,
     },
     task::JoinHandle,
@@ -125,6 +126,7 @@ pub struct Server
 {
     handlers: Arc<RwLock<HashMap<String, EventHandler>>>,
     shutdown: broadcast::Sender<()>,
+    join_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl std::fmt::Debug for Server
@@ -174,7 +176,7 @@ impl Server
         let mut shutdown_rx = shutdown_tx.subscribe();
         let shutdown_tx_clone = shutdown_tx.clone();
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             loop {
                 tokio::select! {
                     accept_result = listener.accept() => {
@@ -203,6 +205,7 @@ impl Server
         });
 
         Ok(Server {
+            join_handle: Arc::new(Mutex::new(Some(handle))),
             handlers,
             shutdown: shutdown_tx,
         })
@@ -238,6 +241,16 @@ impl Server
             .write()
             .await
             .insert(event.to_string(), handler);
+    }
+
+    /// Waits for all handlers to finish.
+    pub async fn wait(&self) -> IpcResult<()>
+    {
+        let handle = self.join_handle.lock().await.take();
+        if let Some(handle) = handle {
+            handle.await?;
+        }
+        Ok(())
     }
 
     /// Shuts down the server and closes all connections.
